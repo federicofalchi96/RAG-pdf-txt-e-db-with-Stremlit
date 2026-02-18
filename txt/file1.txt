@@ -1,0 +1,704 @@
+In today’s AI and data-driven applications era, combining the strengths of large language models with powerful retrieval systems can dramatically improve how we build intelligent applications. One exciting approach is Retrieval Augmented Generation (RAG), which allows us to answer questions, generate insights, or even craft creative narratives based on a vast collection of documents.
+
+Become a member
+We’ll explore how Langgraph and Langchain can help you implement RAG on PDF files.
+
+What is Retrieval Augmented Generation(RAG)?
+Imagine you’re trying to answer a complex question. A language model on its own can generate impressive responses, but sometimes its knowledge might be outdated or incomplete, or sometimes it hallucinates. RAG tackles this challenge by retrieving relevant documents and then using those pieces to augment the generation process.
+
+Step-by-Step: Building a RAG Pipeline
+Let’s walk through the core concepts based on a practical notebook example from the LangChain documentation.
+
+1. Preparing Your Data
+Before you can ask your system a question, you need a source of knowledge. In many RAG applications, this involves:
+
+Collecting documents: These could be articles, research papers, support logs, or any text data.
+Creating embeddings: Convert your documents into numerical vectors using embedding models. These embeddings represent the semantic meaning of your text, making it easier to match questions with relevant documents.
+First thing first let's set up our API keys
+
+import os
+import getpass
+
+def _set_env(var: str):
+    if not os.environ.get(var):
+        os.environ[var] = getpass.getpass(f"{var}: ")
+
+_set_env("OPENAI_API_KEY")
+_set_env("LANGCHAIN_API_KEY")
+
+
+os.environ['LANGCHAIN_TRACING_V2']='true'
+os.environ['LANGCHAIN_ENDPOINT']="https://api.smith.langchain.com"
+os.environ['LANGCHAIN_PROJECT']="new_tracing"
+Load the pdf file into a Document
+To load the file we use the Document Loader from Langchain. Since here we are loading a PDF file we will use PyPDFLoader`
+
+filename = "/path/of/your/pdf/file.pdf"
+loader = PyPDFLoader(file_path=filename)
+docs = []
+docs = loader.load()
+Split the Document
+If the document is large we need to split it into smaller chunks. We will use Text Splitters to break the large corpus.
+
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+text_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=2000,
+    chunk_overlap=30,
+    add_start_index=True)
+
+all_splits = text_splitter.split_documents(docs)
+
+print(f"Split the pdf into {len(all_splits)} sub-documents.")
+Embed and Store
+Next, we are going to embed these fractional documents into vectors and then store these embedded documents in a vector database. To achieve this we need the following
+
+An embedding model
+A vector database
+from langchain_openai import OpenAIEmbeddings
+from langchain_core.vectorstores import InMemoryVectorStore
+
+# embedding model
+embed_model = OpenAIEmbeddings(model="text-embedding-3-large")
+
+# vector storage
+vector_store = InMemoryVectorStore(embedding=embed_model)
+
+# add document chunks to the vector store to get index chunks
+document_ids = vector_store.add_documents(documents=all_splits)
+Simple RAG
+Let's create a simple indexing pipeline and RAG flow using Langgraph
+
+from typing import TypedDict, List
+from IPython.display import Image
+from langchain import hub
+from langchain_core.documents import Document
+from langgraph.graph import START, END, StateGraph
+from langchain_openai import ChatOpenAI
+
+
+prompt = hub.pull('rlm/rag-prompt')
+
+llm = ChatOpenAI(model='gpt-4o')
+
+class State(TypedDict):
+    question: str
+    context: List[Document]
+    answer: str
+
+def retrieve(state: State):
+    print("--Retrieving Information--")
+    question = state['question']
+    retrieved_docs = vector_store.similarity_search(query=question,k=4)
+    return {'context': retrieved_docs}
+
+def generate(state: State):
+    print("--Generating Response--")
+    docs_contents =  "\n\n".join([doc.page_content for doc in state["context"]])
+    messages = prompt.invoke({'question': state['question'], 'context': state['context']})
+    response = llm.invoke(messages)
+    return {'answer': response}
+        
+builder = StateGraph(State)
+
+builder.add_node("retrieve", retrieve)
+builder.add_node("generate", generate)
+
+builder.add_edge(START, "retrieve")
+builder.add_edge("retrieve", "generate")
+builder.add_edge("generate", END)
+
+graph = builder.compile()
+
+Image(graph.get_graph().draw_mermaid_png())
+Here is the workflow of the graph:
+
+Press enter or click to view image in full size
+
+I have tried this graph with my Insurance policy PDF and here are the results.
+
+for event in graph.stream({'question': 'Whose policy is this?'},stream_mode='values'):
+    if event.get('answer',''):
+        event['answer'].pretty_print()
+--Retrieving Information--
+--Generating Response--
+================================== Ai Message ==================================
+
+The policy belongs to Saurabh .
+for event in graph.stream({'question': 'What kind of policy is this?'},stream_mode='values'):
+    if event.get('answer',''):
+        event['answer'].pretty_print()
+--Retrieving Information--
+--Generating Response--
+================================== Ai Message ==================================
+
+The policy is a PRUActive Saver III (SRS), which is an insurance plan underwritten by Prudential Assurance Company Singapore.
+for event in graph.stream({'question': 'What is this policy usful for?'},stream_mode='values'):
+    if event.get('answer',''):
+        event['answer'].pretty_print()
+--Retrieving Information--
+--Generating Response--
+================================== Ai Message ==================================
+
+The policy, PRUActive Saver III (SRS), is designed for savings purposes, as indicated by its inclusion in the Supplementary Retirement Scheme (SRS). It involves a single premium payment and provides a sum assured for the policyholder.
+This RAG is still very simple. In principle, it just searches the documents similar to the query vector. Combine them and respond.
+
+That's all Folks !!
+
+Agentic RAG
+Author: Heesun Moon
+
+Design: LeeYuChul
+
+Peer Review:
+
+Proofread : Chaeyoon Kim
+
+This is a part of LangChain Open Tutorial
+
+Open in ColabOpen in GitHub
+
+Overview
+An Agent is useful when deciding whether to use a search tool. For more details about agents, refer to the Agent page.
+
+To implement a search agent, simply grant the LLM access to the search tool.
+
+This can be integrated into LangGraph.
+
+
+langgraph-agentic-rag
+Table of Contents
+Overview
+
+Environment Setup
+
+Create a basic PDF-based Retrieval Chain
+
+Defining AgentState
+
+Nodes and Edges
+
+Graph
+
+Execute the Graph
+
+References
+LangGraph Tutorials
+
+Environment Setup
+Set up the environment. You may refer to Environment Setup for more details.
+
+[Note]
+
+langchain-opentutorial is a package that provides a set of easy-to-use environment setup, useful functions and utilities for tutorials.
+
+You can checkout the langchain-opentutorial for more details.
+
+
+Copy
+%%capture --no-stderr
+%pip install langchain-opentutorial
+
+Copy
+# Install required packages
+from langchain_opentutorial import package
+
+package.install(
+    [
+        "langchain",
+        "langgraph",
+        "langchain_core",
+        "langchain_openai",
+        "pdfplumber",
+        "faiss-cpu",
+    ],
+    verbose=False,
+    upgrade=False,
+)
+
+Copy
+    [notice] A new release of pip is available: 24.2 -> 24.3.1
+    [notice] To update, run: pip install --upgrade pip
+
+Copy
+# Set environment variables
+from langchain_opentutorial import set_env
+
+set_env(
+    {
+        "OPENAI_API_KEY": "",
+        "LANGCHAIN_API_KEY": "",
+        "LANGCHAIN_TRACING_V2": "true",
+        "LANGCHAIN_ENDPOINT": "https://api.smith.langchain.com",
+        "LANGCHAIN_PROJECT": "06-LangGraph-Agentic-RAG",
+    }
+)
+
+Copy
+Environment variables have been set successfully.
+You can alternatively set API keys such as OPENAI_API_KEY in a .env file and load them.
+
+[Note] This is not necessary if you've already set the required API keys in previous steps.
+
+
+Copy
+# Load API keys from .env file
+from dotenv import load_dotenv
+
+load_dotenv(override=True)
+
+Copy
+True
+Create a basic PDF-based Retrieval Chain
+Here, we create a Retrieval Chain based on a PDF document. This is the Retrieval Chain with the simplest structure.
+
+However, in LangGraph, Retirever and Chain are created separately. Only then can detailed processing be performed for each node.
+
+[Note]
+
+As this was covered in the previous tutorial, detailed explanation will be omitted.
+
+
+Copy
+from rag.pdf import PDFRetrievalChain
+
+# Load the PDF document
+pdf = PDFRetrievalChain(
+    ["data/A European Approach to Artificial Intelligence - A Policy Perspective.pdf"]
+).create_chain()
+
+# Create retriever
+pdf_retriever = pdf.retriever
+
+# Create chain
+pdf_chain = pdf.chain
+Next, create the retriever_tool tool.
+
+[Note]
+
+The document_prompt is a prompt used to represent the retrieved document.
+
+Available Keys
+
+page_content
+
+Keys in metadata: (e.g.) source, page
+
+Example Usage
+
+"<document><context>{page_content}</context><metadata><source>{source}</source><page>{page}</page></metadata></document>"
+
+
+Copy
+from langchain_core.tools.retriever import create_retriever_tool
+from langchain_core.prompts import PromptTemplate
+
+# Create a retriever tool for querying the PDF document
+retriever_tool = create_retriever_tool(
+    pdf_retriever,
+    "pdf_retriever",
+    "Analyze and provide insights from the PDF file titled *A European Approach to Artificial Intelligence - A Policy Perspective*. This document explores AI trends, challenges, and opportunities across various sectors, offering valuable policy recommendations for sustainable AI development in Europe.",
+    document_prompt=PromptTemplate.from_template(
+        "<document><context>{page_content}</context><metadata><source>{source}</source><page>{page}</page></metadata></document>"
+    ),
+)
+
+# Add the retriever tool to the tools list for agent use
+tools = [retriever_tool]
+Defining AgentState
+We will define the AgentState .
+
+Each node is passed a state object. The state consists of a list of messages .
+
+Each node in the graph adds content to this list.
+
+
+Copy
+from typing import Annotated, Sequence, TypedDict
+from langchain_core.messages import BaseMessage
+from langgraph.graph.message import add_messages
+
+
+# Defines agent state and manages messages
+class AgentState(TypedDict):
+    # Manages the sequence of messages using the add_messages reducer function
+    messages: Annotated[Sequence[BaseMessage], add_messages]
+Nodes and Edges
+An agent-based RAG graph can be structured as follows:
+
+state is a collection of messages.
+
+Each node updates (adds to) the state .
+
+Conditional edges determine the next node to visit.
+
+Now, let's create a simple Grader.
+
+
+Copy
+from typing import Literal
+from langchain import hub
+from langchain_core.messages import HumanMessage
+from langchain_core.output_parsers import StrOutputParser
+from langchain_core.prompts import PromptTemplate
+from pydantic import BaseModel, Field
+from langchain_openai import ChatOpenAI
+
+
+# Define the data model
+class grade(BaseModel):
+    """A binary score for relevance checks"""
+
+    binary_score: str = Field(
+        description="Response 'yes' if the document is relevant to the question or 'no' if it is not."
+    )
+
+
+def grade_documents(state) -> Literal["generate", "rewrite"]:
+    model = ChatOpenAI(temperature=0, model="gpt-4o-mini", streaming=True)
+
+    # Set up LLM for structured output
+    llm_with_tool = model.with_structured_output(grade)
+
+    prompt = PromptTemplate(
+        template="""You are a grader assessing relevance of a retrieved document to a user question. \n 
+        Here is the retrieved document: \n\n {context} \n\n
+        Here is the user question: {question} \n
+        If the document contains keyword(s) or semantic meaning related to the user question, grade it as relevant. \n
+        Give a binary score 'yes' or 'no' score to indicate whether the document is relevant to the question.""",
+        input_variables=["context", "question"],
+    )
+
+    chain = prompt | llm_with_tool
+
+    # Extract messages from the current state
+    messages = state["messages"]
+
+    # Get the most recent message
+    last_message = messages[-1]
+
+    # Extract the original question
+    question = messages[0].content
+
+    retrieved_docs = last_message.content
+
+    # Perform relevance evaluation
+    scored_result = chain.invoke({"question": question, "context": retrieved_docs})
+
+    # Extract relevance status
+    score = scored_result.binary_score
+
+    if score == "yes":
+        print("==== [DECISION: DOCS RELEVANT] ====")
+        return "generate"
+
+    else:
+        print("==== [DECISION: DOCS NOT RELEVANT] ====")
+        print(score)
+        return "rewrite"
+
+
+def agent(state):
+    messages = state["messages"]
+
+    model = ChatOpenAI(temperature=0, streaming=True, model="gpt-4o-mini")
+
+    # Bind the retriever tool
+    model = model.bind_tools(tools)
+
+    # Generate agent response
+    response = model.invoke(messages)
+
+    # Returns as a list since it is appended to the existing list
+    return {"messages": [response]}
+
+
+def rewrite(state):
+    print("==== [QUERY REWRITE] ====")
+    messages = state["messages"]
+
+    question = messages[0].content
+
+    # Create a prompt for question refinement
+    msg = [
+        HumanMessage(
+            content=f""" \n 
+    Look at the input and try to reason about the underlying semantic intent / meaning. \n 
+    Here is the initial question:
+    \n ------- \n
+    {question} 
+    \n ------- \n
+    Formulate an improved question: """,
+        )
+    ]
+
+    # Refine the question using the LLM
+    model = ChatOpenAI(temperature=0, model="gpt-4o-mini", streaming=True)
+    # Execute the Query-Transform chain
+    response = model.invoke(msg)
+
+    # Return the rewritten question
+    return {"messages": [response]}
+
+
+def generate(state):
+    messages = state["messages"]
+
+    question = messages[0].content
+
+    docs = messages[-1].content
+
+    # Load the RAG prompt template
+    prompt = hub.pull("teddynote/rag-prompt")
+
+    llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0, streaming=True)
+
+    rag_chain = prompt | llm | StrOutputParser()
+
+    response = rag_chain.invoke({"context": docs, "question": question})
+
+    return {"messages": [response]}
+Graph
+Start with the call_model agent.
+
+The agent decides whether to call a function.
+
+If a function call is decided, an action is executed to invoke the tool (retriever).
+
+The tool's output is added to the messages ( state ), and the agent is called again.
+
+
+Copy
+from langgraph.graph import END, StateGraph, START
+from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.checkpoint.memory import MemorySaver
+
+# Initialize the state graph workflow based on AgentState
+workflow = StateGraph(AgentState)
+
+# Define nodes
+workflow.add_node("agent", agent)
+retrieve = ToolNode([retriever_tool])
+workflow.add_node("retrieve", retrieve)
+workflow.add_node("rewrite", rewrite)
+workflow.add_node(
+    # Response generation node after checking relevant documents
+    "generate",
+    generate,
+)
+
+# Connect edges
+workflow.add_edge(START, "agent")
+
+# Add conditional edges for determining whether to perform retrieval
+workflow.add_conditional_edges(
+    "agent",
+    # Evaluate agent decision
+    tools_condition,
+    {
+        # Map condition outputs to graph nodes
+        "tools": "retrieve",
+        END: END,
+    },
+)
+
+# Define edges for processing after action nodes are executed
+workflow.add_conditional_edges(
+    "retrieve",
+    # Evaluate document quality
+    grade_documents,
+)
+workflow.add_edge("generate", END)
+workflow.add_edge("rewrite", "agent")
+
+# Compile the graph
+graph = workflow.compile(checkpointer=MemorySaver())
+Visualize the compiled graph.
+
+
+Copy
+from langchain_opentutorial.graphs import visualize_graph
+
+visualize_graph(graph)
+
+png
+Execute the Graph
+Now, let's run the graph.
+
+
+Copy
+from langchain_core.runnables import RunnableConfig
+from langchain_opentutorial.messages import stream_graph, invoke_graph, random_uuid
+
+# Configure settings (maximum recursion limit, thread_id)
+config = RunnableConfig(recursion_limit=10, configurable={"thread_id": random_uuid()})
+
+# Define the input data structure, including a user query about the type of agent memory
+inputs = {
+    "messages": [
+        (
+            "user",
+            "Where has the application of AI in healthcare been confined to so far?",
+        ),
+    ]
+}
+
+# Execute the graph
+invoke_graph(graph, inputs, config)
+
+Copy
+    ==================================================
+    🔄 Node: agent 🔄
+    - - - - - - - - - - - - - - - - - - - - - - - - - 
+    ================================== Ai Message ==================================
+    Tool Calls:
+      pdf_retriever (call_ntQvPrGfieUgf2wxlW6nwRUr)
+     Call ID: call_ntQvPrGfieUgf2wxlW6nwRUr
+      Args:
+        query: application of AI in healthcare
+    ==================================================
+    ==== [DECISION: DOCS RELEVANT] ====
+    
+    ==================================================
+    🔄 Node: retrieve 🔄
+    - - - - - - - - - - - - - - - - - - - - - - - - - 
+    ================================= Tool Message =================================
+    Name: pdf_retriever
+    
+    activities. So far, however, AI applications in healthcare have been potential. Specific healthcare training should be provided to data
+    confined to administrative tasks (i.e., Natural Language Processing scientists working in hospitals so that they can better understanddata/A European Approach to Artificial Intelligence - A Policy Perspective.pdf14
+    
+    are great, as more use of AI in research and development could
+    Healthcare is arguably the sector where AI could make the lead to a more personalised healthcare based on patients’ data.data/A European Approach to Artificial Intelligence - A Policy Perspective.pdf14
+    
+    intermediate / professional users (i.e., healthcare professionals). the safety of employees. The key application of AI is certainly in
+    This is a matter of privacy and personal data protection, of building predictive maintenance. Yet, the more radical transformation ofdata/A European Approach to Artificial Intelligence - A Policy Perspective.pdf10
+    
+    same. The Covid-19 crisis has shown how strained our National
+    Healthcare Systems are, and AI solutions could help meet the cur- AI in the healthcare faces organisational and skill challenges. Onedata/A European Approach to Artificial Intelligence - A Policy Perspective.pdf14
+    
+    very sensitive. An extensive use to feed AI tools can the use of patient’s data in the hospitals that deploy
+    Health data raise many concerns. Data ownership is also an issue AI-powered applications. The patients should be awaredata/A European Approach to Artificial Intelligence - A Policy Perspective.pdf15
+    
+    Remote sible, as AI solutions can increasingly divert patients ning healthcare professionals, starting from the simple
+    healthcare to appropriate solutions for their specific symptoms tasks and diagnostic appointments.
+    and underlying conditions.
+    16data/A European Approach to Artificial Intelligence - A Policy Perspective.pdf15
+    
+    to extract information from clinical notes or predictive scheduling healthcare practitioners needs. In addition, at the regulatory le-
+    of the visits) and diagnostic (machine and deep learning applied to vel it is important that new AI regulation is harmonised with otherdata/A European Approach to Artificial Intelligence - A Policy Perspective.pdf14
+    
+    EIT Health and McKinsey & Company, (2020), Transforming healthcare with AI. Impact Scherer, M. (2016). Regulating Artificial Intelligence Systems: Risks, Challenges, Compe-data/A European Approach to Artificial Intelligence - A Policy Perspective.pdf21
+    
+    advanced robots, autonomous cars, drones or Internet of Things place, a recent EIT Health Report envisages more in healthcare in
+    applications)”. Broad AI definitions cover several technologies, in- the near future, such as remote monitoring, AI-powered alertingdata/A European Approach to Artificial Intelligence - A Policy Perspective.pdf3
+    
+    greatest impact in addressing societal challenges. Given rising de- A second challenge is that of finding a common language and un-
+    mands and costs, AI could help doing more and better with the derstanding between data experts and healthcare professionals.data/A European Approach to Artificial Intelligence - A Policy Perspective.pdf14
+    ==================================================
+
+Copy
+c:\Users\user\dev\LangChain-OpenTutorial\.venv\Lib\site-packages\langsmith\client.py:256: LangSmithMissingAPIKeyWarning: API key must be provided when using hosted LangSmith API
+  warnings.warn(
+
+
+
+==================================================
+🔄 Node: generate 🔄
+- - - - - - - - - - - - - - - - - - - - - - - - - 
+The application of AI in healthcare has so far been confined primarily to administrative tasks, such as Natural Language Processing for extracting information from clinical notes and predictive scheduling. 
+
+**Source**
+- data/A European Approach to Artificial Intelligence - A Policy Perspective.pdf (page 14)
+==================================================
+
+Copy
+# Graph Streaming Output
+stream_graph(graph, inputs, config, ["agent", "rewrite", "generate"])
+
+Copy
+    ==================================================
+    🔄 Node: agent 🔄
+    - - - - - - - - - - - - - - - - - - - - - - - - - 
+    The application of AI in healthcare has so far been confined primarily to administrative tasks. This includes the use of Natural Language Processing (NLP) for extracting information from clinical notes and predictive scheduling for managing appointments and visits.
+    
+    **Source**
+    - data/A European Approach to Artificial Intelligence - A Policy Perspective.pdf (page 14)
+The following are examples of questions where document retrieval is unnecessary.
+
+
+Copy
+# Examples of Questions Where Document Retrieval Is Unnecessary
+inputs = {
+    "messages": [
+        ("user", "What is the capital of South Korea?"),
+    ]
+}
+
+stream_graph(graph, inputs, config, ["agent", "rewrite", "generate"])
+
+Copy
+    ==================================================
+    🔄 Node: agent 🔄
+    - - - - - - - - - - - - - - - - - - - - - - - - - 
+    The capital of South Korea is Seoul.
+Below are some examples of questions where document retrieval is not possible.
+
+As a result, a GraphRecursionError occurred during the continuous document retrieval process.
+
+
+Copy
+from langgraph.errors import GraphRecursionError
+
+# Examples of Questions Where Document Retrieval Is Not Possible
+inputs = {
+    "messages": [
+        ("user", "Tell me about TeddyNote's LangChain tutorial."),
+    ]
+}
+
+try:
+    stream_graph(graph, inputs, config, ["agent", "rewrite", "generate"])
+except GraphRecursionError as recursion_error:
+    print(f"GraphRecursionError: {recursion_error}")
+
+Copy
+    ==================================================
+    🔄 Node: agent 🔄
+    - - - - - - - - - - - - - - - - - - - - - - - - - 
+    ==== [DECISION: DOCS NOT RELEVANT] ====
+    no
+    ==== [QUERY REWRITE] ====
+    
+    ==================================================
+    🔄 Node: rewrite 🔄
+    - - - - - - - - - - - - - - - - - - - - - - - - - 
+    What are the key concepts and features covered in TeddyNote's LangChain tutorial, and how can they be applied in practical scenarios?
+    ==================================================
+    🔄 Node: agent 🔄
+    - - - - - - - - - - - - - - - - - - - - - - - - - 
+    ==== [DECISION: DOCS NOT RELEVANT] ====
+    no
+    ==== [QUERY REWRITE] ====
+    
+    ==================================================
+    🔄 Node: rewrite 🔄
+    - - - - - - - - - - - - - - - - - - - - - - - - - 
+    What are the key concepts and features covered in TeddyNote's LangChain tutorial, and how can they be applied in practical scenarios?
+    ==================================================
+    🔄 Node: agent 🔄
+    - - - - - - - - - - - - - - - - - - - - - - - - - 
+    ==== [DECISION: DOCS NOT RELEVANT] ====
+    no
+    ==== [QUERY REWRITE] ====
+    
+    ==================================================
+    🔄 Node: rewrite 🔄
+    - - - - - - - - - - - - - - - - - - - - - - - - - 
+    What are the key concepts and features covered in TeddyNote's LangChain tutorial, and how can they be applied in practical scenarios?
+    ==================================================
+    🔄 Node: agent 🔄
+    - - - - - - - - - - - - - - - - - - - - - - - - - 
+    GraphRecursionError: Recursion limit of 10 reached without hitting a stop condition. You can increase the limit by setting the `recursion_limit` config key.
+    For troubleshooting, visit: https://python.langchain.com/docs/troubleshooting/errors/GRAPH_RECURSION_LIMIT
+The next tutorial will cover how to resolve this issue
