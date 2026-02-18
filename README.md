@@ -18,22 +18,35 @@ Un agente RAG intelligente che:
 
 1. Clona la repo
    ```bash
+
+   
    git clone https://github.com/tuo-username/rag-langgraph.git
+
+
    cd rag-langgraph
 
 2. Crea ambiente virtuale
+
+
 python -m venv venv
+
+
 source venv/bin/activate  # Windows: venv\Scripts\activate
 
-3. Installa dipendenze
-Installa dipendenzeBashpip install -r requirements.txt
 
-4. Crea .env
+4. Installa dipendenze
 
-5. Indicizza i documenti una sola volta
+
+pip install -r requirements.txt
+
+6. Crea .env
+
+7. Indicizza i documenti una sola volta
+
+
 python ingestion.py
 
-6. Avvia l'app
+8. Avvia l'app
 
 streamlit run streamlit_app.py
 
