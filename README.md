@@ -34,6 +34,7 @@ Installa dipendenzeBashpip install -r requirements.txt
 python ingestion.py
 
 6. Avvia l'app
+
 streamlit run streamlit_app.py
 
 Funzionalità principali
